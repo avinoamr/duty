@@ -1,0 +1,23 @@
+{
+  "name": "duty",
+  "version": "1.0.0",
+  "description": "Ridiculously simple Javascript job queue ",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/avinoamr/duty.git"
+  },
+  "keywords": [
+    "job",
+    "queue"
+  ],
+  "author": "Roi Avinoam <avinoamr@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/avinoamr/duty/issues"
+  },
+  "homepage": "https://github.com/avinoamr/duty"
+}
