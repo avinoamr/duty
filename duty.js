@@ -10,12 +10,8 @@ duty.get = get;
 duty.cancel = cancel;
 duty.db = db;
 
-function duty ( name, id, data ) {
-    if ( arguments.length == 2 ) {
-        data = id;
-        id = Math.random().toString( 36 ).substr( 2 );
-    }
-
+function duty ( name, data ) {
+    var id = id = Math.random().toString( 36 ).substr( 2 );
     var job = new events.EventEmitter();
     job.name = name;
     job.id = id;

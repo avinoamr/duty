@@ -112,18 +112,6 @@ describe( "Duty", function () {
             })
     });
 
-    it( "uses the delivered id", function ( done ) {
-        duty( "test", 1234, { foo: "bar" } )
-        .on( "add", function () {
-            assert.equal( this.id, 1234 );
-            duty.get( this, function ( err, job ) {
-                assert.equal( job.id, 1234 );
-                assert.deepEqual( job.data, { foo: "bar" } );
-                done( err );
-            })
-        })
-    })
-
     it( "stores job result", function ( done ) {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
