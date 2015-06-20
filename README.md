@@ -12,9 +12,9 @@ Simply managing offline jobs shouldn't involve dedicated databases, standalone s
 var duty = require( "duty" );
 
 // add a job to the queue
-duty( "test-job", { hello: "world" } )
-    .on( "error", function ( err ) {})
-    .on( "done", function ( result ) {});
+duty( "test-job", { hello: "world" }, function ( err, job ) {
+    // job was added
+});
 
 // Meanwhile... elsewhere in the code
 duty.register( "test-job", function ( data, done ) {

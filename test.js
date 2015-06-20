@@ -3,17 +3,18 @@ var duty = require( "./duty" );
 
 describe( "Duty", function () {
 
-    it( "returns the added job id and pending status", function () {
-        var job = duty( "test", { hello: "world" } )
-        assert( job.id );
-        assert.equal( job.status, "pending" );
+    it( "returns the added job id and pending status", function ( done ) {
+        var job = duty( "test", { hello: "world" }, function ( err, job ) {
+            assert( job.id );
+            assert.equal( job.status, "pending" );
+            done( err );
+        })
     });
 
-    it( "fires an 'add' event when the job is added", function ( done ) {
+    it( "returns the job is added", function ( done ) {
         var before = new Date();
-        var job = duty( "test", {} )
-        job.on( "add", function () {
-            var added_on = new Date( this.added_on );
+        var job = duty( "test", {}, function ( err, job ) {
+            var added_on = new Date( job.added_on );
             assert( added_on >= before );
             assert( added_on <= after );
             done();
@@ -21,19 +22,18 @@ describe( "Duty", function () {
         var after = new Date();
     });
 
-    it( "fires an 'error' event when the job wasn't added", function ( done ) {
+    it( "returns an error when job wasn't added", function ( done ) {
         var db = duty.db();
         var save = db.Cursor.prototype._save;
         db.Cursor.prototype._save = function ( data, cb ) {
             cb( new Error( "Something went wrong" ) );
         }
         
-        duty( "test", { hello: "world" } )
-            .on( "error", function ( err ) {
-                db.Cursor.prototype._save = save;
-                assert.equal( err.message, "Something went wrong" )
-                done();
-            });
+        duty( "test", { hello: "world" }, function ( err ) {
+            db.Cursor.prototype._save = save;
+            assert.equal( err.message, "Something went wrong" )
+            done();
+        })
     });
 
     it( "queues jobs until a listener is registered", function ( done ) {
@@ -101,15 +101,14 @@ describe( "Duty", function () {
     });
 
     it( "get returns the job object", function ( done ) {
-        duty( "test", { hello: "world" } )
-            .on( "add", function () {
-                var id = this.id;
-                duty.get( id, function ( err, job ) {
-                    assert.deepEqual( job.data, { hello: "world" } );
-                    assert.equal( job.id, id );
-                    done( err );
-                })
+        duty( "test", { hello: "world" }, function ( err, job ) {
+            var id = job.id;
+            duty.get( id, function ( err, job ) {
+                assert.deepEqual( job.data, { hello: "world" } );
+                assert.equal( job.id, id );
+                done( err );
             })
+        })
     });
 
     it( "stores job result", function ( done ) {

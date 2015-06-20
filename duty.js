@@ -10,30 +10,26 @@ duty.get = get;
 duty.cancel = cancel;
 duty.db = db;
 
-function duty ( name, data ) {
+function duty ( name, data, done ) {
+    done || ( done = function () {} );
     var id = id = Math.random().toString( 36 ).substr( 2 );
-    var job = new events.EventEmitter();
-    job.name = name;
-    job.id = id;
-    job.status = "pending";
-    job.data = data;
+    var job = {
+        name: name,
+        id: id,
+        status: "pending",
+        data: data
+    };
     
     var added_on = new Date().toISOString();
     var cursor = new conn.Cursor()
-        .on( "error", job.emit.bind( job, "error" ) )
+        .on( "error", done )
         .on( "finish", function () {
             job.added_on = added_on;
-            job.emit( "add" );
+            done( null, job )
         });
 
     process.nextTick( function () {
-        cursor.end({ 
-            id: id, 
-            name: name,
-            status: "pending", 
-            added_on: added_on,
-            data: data
-        });
+        cursor.end( extend( { added_on: added_on }, job ) );
     })
     return job;
 }
