@@ -17,12 +17,37 @@ duty( "test-job", { hello: "world" } )
     .on( "done", function ( result ) {});
 
 // Meanwhile... elsewhere in the code
-duty.register( "test-job", function ( data ) {
+duty.register( "test-job", function ( data, done ) {
     // do your magic
-    this.emit( "done", { ok: 1 } ); // 
+    done( null, { ok: 1 } ); // 
 });
 ```
 
+### Jobs Persistence
+
+Duty uses the `dbstream` standard for providing a portable persistency model. By default, duty ships with the `dbstream-memory` library, which saves all of the jobs data to local memory. This can be easily reconfigured to use other databases:
+
+```javascript
+var db = require("dbstream-memory");
+var conn = db.connect( "mongodb://127.0.0.1:27017/test", { collection: "jobs" } );
+duty.db( conn ); // use mongodb instead of memory
+```
+
+### Registering Listeners
+
+`duty.register( name, fn, options )`
+
+* **name** is a string for the job name
+* **fn** is the listener function to handle jobs:
+    - **data** the data object that was inserted to the queue
+    - **done** a callback function that needs to be called to indicate that the processing is done, either successfully or with an error
+        + **err** the error string or object
+        + **result** the job result object
+    - **this** runs with the context of the job itself, which is an EventEmitter
+* **options**
+    - **delay** [60000] number of milliseconds to wait after the queue is empty before attempting to poll more jobs
+    - **ttl** [Infinity] number of milliseconds to allow for an inactivity timeout. If the job didn't finish within that time, or no `progress` events were emitted, the job will timeout with an error. This can happen when the code fails to call the `done` callback.
+    - **concurrency** [1] number of listeners that can be invoked in parallel
 
 
 
