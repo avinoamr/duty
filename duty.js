@@ -18,7 +18,8 @@ function duty ( name, data, done ) {
         name: name,
         id: id,
         status: "pending",
-        data: data
+        data: data,
+        done: false,
     };
     
     var added_on = new Date().toISOString();
@@ -32,18 +33,21 @@ function duty ( name, data, done ) {
     if ( data.id ) {
         var duplicate = false;
         cursor.on( "data", function ( job ) {
-            var err = new Error( "Duplicate running job detected in Job #" + job.id );
-            err.code = "duplicate";
-            err.dataid = data.id
-            err.jobid = job.id;
-            err.status = "running";
-            err.description = "Cancel the running job first, before adding " +
-                "a new one with the same data.id";
+            var err = "Duplicate running job detected in Job #" + job.id;
+            err = extend( new Error( err ), {
+                code: "duplicate",
+                dataid: data.id,
+                jobid: job.id,
+                status: job.status,
+                description: "Cancel the running job first, before adding " +
+                    "a new one with the same data.id"
+            })
+            
             this.removeAllListeners()
             done( err )
         })
         .on( "end", push )
-        .find({ status: "running", dataid: data.id })
+        .find({ done: false, dataid: data.id })
     } else {
         push();
     }
@@ -150,6 +154,7 @@ function onsuccess( result ) {
         id: this.id,
         status: ( this.status = "success" ),
         result: result,
+        done: true,
         end_on: new Date().toISOString()
     }, function ( err, found ) {
         extend( this, found );
@@ -165,6 +170,7 @@ function onerror( err ) {
 
     update({
         id: this.id,
+        done: true,
         status: ( this.status = "error" ),
         error: err instanceof Error ? err.toString() : err,
         end_on: new Date().toISOString()

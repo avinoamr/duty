@@ -354,19 +354,34 @@ describe( "Duty", function () {
 
     it( "prevents duplicate running of the same data", function ( done ) {
         var job;
-        duty( "test", { id: 15, hello: "world" } );
         duty.register( "test", function ( data, cb ) {
             job = this;
             setTimeout( cb, 100 );
-        })
+        }, { delay: 20 })
+        duty( "test", { id: 15, hello: "world" } );
 
         setTimeout( function () {
             duty( "test", { id: 15, hello: "world" }, function ( err ) {
-                assert( err );
+                assert( err instanceof Error, err + " instanceof Error" );
                 assert.equal( err.code, "duplicate" );
                 assert.equal( err.jobid, job.id );
                 assert.equal( err.dataid, 15 );
                 assert.equal( err.status, "running" );
+                done();
+            });
+        }, 10 )
+    })
+
+    it( "prevents duplicate pending of the same data", function ( done ) {
+        var job = duty( "test", { id: 15, hello: "world" } );
+
+        setTimeout( function () {
+            duty( "test", { id: 15, hello: "world" }, function ( err ) {
+                assert( err instanceof Error, err + " instanceof Error" );
+                assert.equal( err.code, "duplicate" );
+                assert.equal( err.jobid, job.id );
+                assert.equal( err.dataid, 15 );
+                assert.equal( err.status, "pending" );
                 done();
             });
         }, 10 )
