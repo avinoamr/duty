@@ -52,7 +52,13 @@ function register ( name, fn, options ) {
         concurrency: 1
     }, options );
 
-    runloop( name, fn, options );
+    for ( var i = 0 ; i < options.concurrency ; i += 1 ) {
+        // space out the concurrent runloops to reduce the likelihood of 
+        // claim conflicts
+        setTimeout( function () {
+            runloop( name, fn, options );
+        }, 10 * i );
+    }
 }
 
 function unregister( name ) {
@@ -76,53 +82,19 @@ function runloop ( name, fn, options ) {
             runloop( name, fn, options )
         }, options.delay );
 
-        job = extend( new events.EventEmitter(), job );
-
-        job.on( "progress", function ( loaded, total ) {
-            resetTimeout();
-            update({ 
-                id: job.id, 
-                loaded: loaded, 
-                total: total 
-            }, function ( err, found ) {
-                extend( job, found );
-                if ( err || job.status == "error" ) {
-                    job.emit( "error", err || job.error );
-                }
-            });
-        });
-
-        job.on( "error", function ( err ) {
-            clearTimeout( timeout );
-            update({
-                id: job.id,
-                status: "error",
-                error: err instanceof Error ? err.toString() : err,
-                end_on: new Date().toISOString()
-            }, function ( err, found ) {
-                extend( job, found )
-            });
-        })
-
-        job.on( "success", function ( result ) {
-            clearTimeout( timeout );
-            update({
-                id: job.id,
-                status: "success",
-                result: result,
-                end_on: new Date().toISOString()
-            }, function ( err, found ) {
-                extend( job, found );
-                if ( err || job.status == "error" ) {
-                    job.emit( "error", err || job.error );
-                }
-            } );
-        })
+        // create the job emitter and bind the event listeners used to control
+        // the life-cycle of the job
+        job = extend( new events.EventEmitter(), job )
+            .on( "progress", onprogress )
+            .on( "error", onerror )
+            .on( "error", resetTimeout )
+            .on( "success", onsuccess )
+            .on( "success", resetTimeout );
 
         // start running it
         resetTimeout();
         try {
-            fn.call( job, job.data, function ( err, result ) {
+            fn.call( job, job.data, function ondone ( err, result ) {
                 if ( err ) {
                     job.emit( "error", err );
                 } else {
@@ -146,6 +118,44 @@ function runloop ( name, fn, options ) {
             }
         }
     })
+}
+
+function onsuccess( result ) {
+    update({
+        id: this.id,
+        status: ( this.status = "success" ),
+        result: result,
+        end_on: new Date().toISOString()
+    }, function ( err, found ) {
+        extend( this, found );
+        if ( err || this.status == "error" ) {
+            this.emit( "error", err || this.error );
+        }
+    }.bind( this ) );
+}
+
+function onerror( err ) {
+    update({
+        id: this.id,
+        status: ( this.status = "error" ),
+        error: err instanceof Error ? err.toString() : err,
+        end_on: new Date().toISOString()
+    }, function ( err, found ) {
+        extend( this, found )
+    });
+}
+
+function onprogress ( loaded, total ) {
+    update({ 
+        id: this.id, 
+        loaded: loaded, 
+        total: total 
+    }, function ( err, found ) {
+        extend( this, found );
+        if ( err || this.status == "error" ) {
+            this.emit( "error", err || this.error );
+        }
+    }.bind( this ) );
 }
 
 // claim and return the next available job in the queue

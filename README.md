@@ -28,7 +28,7 @@ duty.register( "test-job", function ( data, done ) {
 Duty uses the `dbstream` standard for providing a portable persistency model. By default, duty ships with the `dbstream-memory` library, which saves all of the jobs data to local memory. This can be easily reconfigured to use other databases:
 
 ```javascript
-var db = require("dbstream-memory");
+var db = require("dbstream-mongo");
 var conn = db.connect( "mongodb://127.0.0.1:27017/test", { collection: "jobs" } );
 duty.db( conn ); // use mongodb instead of memory
 ```

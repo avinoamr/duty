@@ -34,10 +34,10 @@ describe( "Duty", function () {
                 assert.equal( err.message, "Something went wrong" )
                 done();
             });
-    })
+    });
 
     it( "queues jobs until a listener is registered", function ( done ) {
-        var count = 0, all = [
+        var count = 0, input = [], all = [
             { hello: "world" },
             { foo: "bar" },
             { alice: "bob" }
@@ -46,28 +46,39 @@ describe( "Duty", function () {
         duty( "test", all[ 1 ] );
         duty( "test", all[ 2 ] );
         duty.register( "test", function ( data, cb ) {
-            assert.deepEqual( data, all[ count++ ] );
+            count += 1;
+            input.push( data );
             cb();
-            if ( count == 3 ) done();
-        })
+        });
+        setTimeout( function () {
+            assert.deepEqual( input, all );
+            assert.equal( count, 3 );
+            done();
+        }, 20 )
     });
 
     it( "pushes new jobs to existing listeners", function ( done ) {
-        var count = 0, all = [
+        var count = 0, input = [], all = [
             { hello: "world" },
             { foo: "bar" },
             { alice: "bob" }
         ];
         duty.register( "test", function ( data, cb ) {
-            assert.deepEqual( data, all[ count++ ] );
+            input.push( data );
+            count += 1;
             cb();
-            if ( count == 3 ) done();
-        }, { delay: 10 } );
+        }, { delay: 5 } );
         setTimeout( function () {
             duty( "test", all[ 0 ] );
             duty( "test", all[ 1 ] );
             duty( "test", all[ 2 ] );
-        }, 10 );
+        }, 5 );
+
+        setTimeout( function () {
+            assert.deepEqual( input, all );
+            assert.equal( count, 3 );
+            done();
+        }, 20 )
     });
 
     it( "unregister listeners", function ( done ) {
@@ -77,7 +88,7 @@ describe( "Duty", function () {
         duty.unregister( "test" );
         duty( "test", {} );
         setTimeout( done, 30 );
-    })
+    });
 
     it( "overrides registered listeners", function ( done ) {
         duty.register( "test", function ( data, cb ) {
@@ -105,16 +116,16 @@ describe( "Duty", function () {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
             cb( null, { ok: 1 } );
-            setTimeout( function () {
-                duty.get( job.id, function ( err, job ) {
-                    assert.deepEqual( job.result, { ok: 1 } );
-                    assert.equal( typeof job.error, "undefined" );
-                    assert.equal( job.status, "success" );
-                    assert( !isNaN( new Date( job.end_on ).getTime() ) )
-                    done( err );
-                })
-            }, 20 );
         })
+        setTimeout( function () {
+            duty.get( job.id, function ( err, job ) {
+                assert.deepEqual( job.result, { ok: 1 } );
+                assert.equal( typeof job.error, "undefined" );
+                assert.equal( job.status, "success" );
+                assert( !isNaN( new Date( job.end_on ).getTime() ) )
+                done( err );
+            })
+        }, 20 );
     });
 
     it( "stores job error", function ( done ) {
@@ -133,7 +144,7 @@ describe( "Duty", function () {
         }, 20 );
     });
 
-    it( "stores errors for sync thrown exceptions", function ( done ) {
+    it( "stores errors for syncly thrown exceptions", function ( done ) {
         var job = duty( "test", {} )
         duty.register( "test", function () {
             throw new Error( "Something went wrong" )
@@ -147,7 +158,7 @@ describe( "Duty", function () {
                 done( err );
             })
         }, 20 );
-    })
+    });
 
     it( "prevents duplicate processing of the same job", function ( done ) {
         var input = [];
@@ -204,6 +215,7 @@ describe( "Duty", function () {
                 done();
             });
         });
+
         setTimeout( function () {
             duty.cancel( job, function ( err ) {
                 if ( err ) done( err );
@@ -244,13 +256,51 @@ describe( "Duty", function () {
         }, 30 )
     });
 
-    // it( "runs listeners concurrently", function ( done ) {
-    //     duty( "test", {});
-    //     duty( "test", {});
-    //     duty( "test", {});
-    // })
+    it( "runs listeners serially", function ( done ) {
+        duty( "test", {});
+        duty( "test", {});
+        duty( "test", {});
 
+        var concurrent = 0, results = [];
+        duty.register( "test", function ( data, cb ) {
+            concurrent += 1;
+            results.push( concurrent )
+            setTimeout( function () {
+                concurrent -= 1;
+                cb();
+            }, 5 )
+        }, { concurrency: 1 } );
 
+        setTimeout( function () {
+            assert.equal( results[ 0 ], 1 );
+            assert.equal( results[ 1 ], 1 );
+            assert.equal( results[ 2 ], 1 );
+            done();
+        }, 20 )
+    });
+
+    it( "runs listeners concurrently", function ( done ) {
+        duty( "test", {});
+        duty( "test", {});
+        duty( "test", {});
+
+        var concurrent = 0, results = [];
+        duty.register( "test", function ( data, cb ) {
+            concurrent += 1;
+            results.push( concurrent )
+            setTimeout( function () {
+                concurrent -= 1;
+                cb();
+            }, 20 )
+        }, { concurrency: 10 } );
+
+        setTimeout( function () {
+            assert.equal( results[ 0 ], 1 );
+            assert.equal( results[ 1 ], 2 );
+            assert.equal( results[ 2 ], 3 );
+            done();
+        }, 40 )
+    });
 
     // remove all jobs before and after each test
     beforeEach( reset );
