@@ -363,6 +363,7 @@ describe( "Duty", function () {
         setTimeout( function () {
             duty( "test", { id: 15, hello: "world" }, function ( err ) {
                 assert( err );
+                assert.equal( err.code, "duplicate" );
                 assert.equal( err.jobid, job.id );
                 assert.equal( err.dataid, 15 );
                 assert.equal( err.status, "running" );

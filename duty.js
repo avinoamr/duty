@@ -33,6 +33,7 @@ function duty ( name, data, done ) {
         var duplicate = false;
         cursor.on( "data", function ( job ) {
             var err = new Error( "Duplicate running job detected in Job #" + job.id );
+            err.code = "duplicate";
             err.dataid = data.id
             err.jobid = job.id;
             err.status = "running";
