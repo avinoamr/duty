@@ -352,6 +352,25 @@ describe( "Duty", function () {
         });
     });
 
+    it( "prevents duplicate running of the same data", function ( done ) {
+        var job;
+        duty( "test", { id: 15, hello: "world" } );
+        duty.register( "test", function ( data, cb ) {
+            job = this;
+            setTimeout( cb, 100 );
+        })
+
+        setTimeout( function () {
+            duty( "test", { id: 15, hello: "world" }, function ( err ) {
+                assert( err );
+                assert.equal( err.jobid, job.id );
+                assert.equal( err.dataid, 15 );
+                assert.equal( err.status, "running" );
+                done();
+            });
+        }, 10 )
+    })
+
     // remove all jobs before and after each test
     beforeEach( reset );
     afterEach( reset );

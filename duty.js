@@ -1,4 +1,5 @@
 var util = require( "util" );
+var crypto = require( "crypto" );
 var events = require( "events" );
 var extend = require( "extend" );
 var conn = require( "dbstream-memory" ).connect();
@@ -12,7 +13,7 @@ duty.db = db;
 
 function duty ( name, data, done ) {
     done || ( done = function () {} );
-    var id = id = Math.random().toString( 36 ).substr( 2 );
+    var id = Math.random().toString( 36 ).substr( 2 );
     var job = {
         name: name,
         id: id,
@@ -28,10 +29,28 @@ function duty ( name, data, done ) {
             done( null, job )
         });
 
-    process.nextTick( function () {
-        cursor.end( extend( { added_on: added_on }, job ) );
-    })
+    if ( data.id ) {
+        var duplicate = false;
+        cursor.on( "data", function ( job ) {
+            var err = new Error( "Duplicate running job detected in Job #" + job.id );
+            err.dataid = data.id
+            err.jobid = job.id;
+            err.status = "running";
+            err.description = "Cancel the running job first, before adding " +
+                "a new one with the same data.id";
+            this.removeAllListeners()
+            done( err )
+        })
+        .on( "end", push )
+        .find({ status: "running", dataid: data.id })
+    } else {
+        push();
+    }
     return job;
+
+    function push() {
+        cursor.end( extend( { added_on: added_on, dataid: data.id }, job ) );
+    }
 }
 
 // register a listener 
