@@ -144,6 +144,43 @@ describe( "Duty", function () {
         }, 20 );
     });
 
+    it( "doesn't modify completed jobs", function ( done ) {
+        var job = duty( "test", {} );
+        duty.register( "test", function ( data, done ) {
+            this.emit( "error", "Something went wrong" );
+            setTimeout( function () {
+                done( null, "Successful" );
+            }, 20 )
+        });
+        setTimeout( function () {
+            duty.get( job, function ( err, job ) {
+                assert.equal( job.status, "error" );
+                assert.equal( job.error, "Something went wrong" );
+                assert.equal( typeof job.result, "undefined" );
+                done( err );
+            })
+        }, 40 )
+    });
+
+    it( "calling done multiple times doesn't modify the job", function ( done ) {
+        var job = duty( "test", {} );
+        duty.register( "test", function ( data, done ) {
+            done( null, "Successful" );
+            setTimeout( function () {
+                done( "Something went wrong" );
+            }, 20 );
+        })
+
+        setTimeout( function () {
+            duty.get( job, function ( err, job ) {
+                assert.equal( job.status, "success" );
+                assert.equal( job.result, "Successful" );
+                assert.equal( typeof job.error, "undefined" );
+                done( err );
+            })
+        }, 40 )
+    })
+
     it( "stores errors for syncly thrown exceptions", function ( done ) {
         var job = duty( "test", {} )
         duty.register( "test", function () {
@@ -223,14 +260,14 @@ describe( "Duty", function () {
         }, 20 );
     });
 
-    it( "expires jobs after ttl", function ( done ) {
+    it( "expires jobs after the inactivity timeout", function ( done ) {
         var everror;
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
             this.on( "error", function ( err ) {
                 everror = err;
             })
-        }, { ttl: 20 } );
+        }, { timeout: 20 } );
 
         setTimeout( function () {
             duty.get( job, function ( err, job ) {
@@ -246,7 +283,7 @@ describe( "Duty", function () {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
             setTimeout( cb, 5 );
-        }, { ttl: 20 } );
+        }, { timeout: 20 } );
 
         setTimeout( function () {
             duty.get( job, function ( err, job ) {
@@ -268,7 +305,7 @@ describe( "Duty", function () {
             setTimeout( function () {
                 concurrent -= 1;
                 cb();
-            }, 5 )
+            }, 20 )
         }, { concurrency: 1 } );
 
         setTimeout( function () {
@@ -276,7 +313,7 @@ describe( "Duty", function () {
             assert.equal( results[ 1 ], 1 );
             assert.equal( results[ 2 ], 1 );
             done();
-        }, 20 )
+        }, 100 )
     });
 
     it( "runs listeners concurrently", function ( done ) {
@@ -291,7 +328,7 @@ describe( "Duty", function () {
             setTimeout( function () {
                 concurrent -= 1;
                 cb();
-            }, 20 )
+            }, 30 )
         }, { concurrency: 10 } );
 
         setTimeout( function () {
@@ -299,7 +336,21 @@ describe( "Duty", function () {
             assert.equal( results[ 1 ], 2 );
             assert.equal( results[ 2 ], 3 );
             done();
-        }, 40 )
+        },  100 )
+    });
+
+    it( "validates the concurrency", function () {
+        assert.throws( function () {
+            duty.register( "test", function () {}, { concurrency: Infinity } );
+        });
+
+        assert.throws( function () {
+            duty.register( "test", function () {}, { concurrency: 0 } );
+        });
+
+        assert.throws( function () {
+            duty.register( "test", function () {}, { concurrency: -10 } );
+        });
     });
 
     // remove all jobs before and after each test

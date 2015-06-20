@@ -48,9 +48,13 @@ function register ( name, fn, options ) {
     listeners[ name ] = fn;
     options = extend({ 
         delay: 60000, // 1-minute?
-        ttl: Infinity,
+        timeout: Infinity,
         concurrency: 1
     }, options );
+
+    if ( options.concurrency == Infinity || options.concurrency <= 0 ) {
+        throw new Error( "Concurrency must be a finite positive number" );
+    }
 
     for ( var i = 0 ; i < options.concurrency ; i += 1 ) {
         // space out the concurrent runloops to reduce the likelihood of 
@@ -86,15 +90,19 @@ function runloop ( name, fn, options ) {
         // the life-cycle of the job
         job = extend( new events.EventEmitter(), job )
             .on( "progress", onprogress )
-            .on( "error", onerror )
-            .on( "error", resetTimeout )
-            .on( "success", onsuccess )
-            .on( "success", resetTimeout );
+            .once( "error", onerror )
+            .once( "error", resetTimeout )
+            .once( "success", onsuccess )
+            .once( "success", resetTimeout );
 
         // start running it
+        var completed = false;
         resetTimeout();
         try {
-            fn.call( job, job.data, function ondone ( err, result ) {
+            fn.call( job, job.data, function ( err, result ) {
+                if ( completed ) return; // disregard multiple calls?
+                completed = true;
+
                 if ( err ) {
                     job.emit( "error", err );
                 } else {
@@ -103,6 +111,8 @@ function runloop ( name, fn, options ) {
                 runloop( name, fn, options );
             });
         } catch ( err ) {
+            if ( completed ) return;
+            completed = true;
             job.emit( "error", err );
             runloop( name, fn, options );
         }
@@ -111,16 +121,19 @@ function runloop ( name, fn, options ) {
         var timeout;
         function resetTimeout() {
             clearTimeout( timeout );
-            if ( options.ttl < Infinity && job.status == "running" ) {
+            if ( options.timeout < Infinity && job.status == "running" ) {
                 timeout = setTimeout( function () {
                     job.emit( "error", "Expired due to inactivity" );
-                }, options.ttl )
+                }, options.timeout )
             }
         }
     })
 }
 
 function onsuccess( result ) {
+    // don't update completed jobs
+    if ( this.status != "running" ) return;
+
     update({
         id: this.id,
         status: ( this.status = "success" ),
@@ -135,6 +148,9 @@ function onsuccess( result ) {
 }
 
 function onerror( err ) {
+    // don't update completed jobs
+    if ( this.status != "running" ) return;
+
     update({
         id: this.id,
         status: ( this.status = "error" ),
@@ -146,6 +162,7 @@ function onerror( err ) {
 }
 
 function onprogress ( loaded, total ) {
+    if ( this.status != "running" ) return;
     update({ 
         id: this.id, 
         loaded: loaded, 

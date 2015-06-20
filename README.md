@@ -19,7 +19,7 @@ duty( "test-job", { hello: "world" } )
 // Meanwhile... elsewhere in the code
 duty.register( "test-job", function ( data, done ) {
     // do your magic
-    done( null, { ok: 1 } ); // 
+    done( null, { ok: 1 } );
 });
 ```
 
@@ -37,17 +37,55 @@ duty.db( conn ); // use mongodb instead of memory
 
 `duty.register( name, fn, options )`
 
-* **name** is a string for the job name
-* **fn** is the listener function to handle jobs:
-    - **data** the data object that was inserted to the queue
-    - **done** a callback function that needs to be called to indicate that the processing is done, either successfully or with an error
-        + **err** the error string or object
-        + **result** the job result object
-    - **this** runs with the context of the job itself, which is an EventEmitter
-* **options**
-    - **delay** [60000] number of milliseconds to wait after the queue is empty before attempting to poll more jobs
-    - **ttl** [Infinity] number of milliseconds to allow for an inactivity timeout. If the job didn't finish within that time, or no `progress` events were emitted, the job will timeout with an error. This can happen when the code fails to call the `done` callback.
-    - **concurrency** [1] number of listeners that can be invoked in parallel
+* **name** is a string for the queue name
+* **fn** is the listener function to handle jobs
+* **options** is an optional object of listener configuration options
 
+This is a fully-blown example of a job that reads a file and counts the number of lines in it:
 
+```javascript
+duty.register( "count-lines", function ( data, done ) {
+    var newlines = 0, total = null, loaded = 0;
+
+    // read the file and count the number of newlines
+    var readable = fs.createReadStream( data.filename )
+        .once( "error", done )
+        .on( "data", function ( data ) {
+            loaded += data.length;
+            newlines += data
+                .toString()
+                .split( "\n" )
+                .length - 1;
+
+            // optionally, emit progress updates to allow external code to
+            // keep track of the internal job progress  
+            this.emit( "progress", loaded, total )
+        }.bind( this ) )
+        .once( "end", function () {
+            done( null, { newlines: newlines } );
+        });
+
+    // read the total file size, used for the progress tracking
+    fs.stat( data.filename, function ( err, stats ) {
+        if ( err ) return done( err );
+        total = stats.size;
+    })
+
+    // an external error (or job cancelation) has been triggered
+    // this is important if you have a long running job, and you want to allow
+    // external code to call duty.cancel( job ) to terminate it.
+    this.on( "error", function () {
+        readable.destroy();
+    })
+})
+
+// add tasks to this queue
+duty( "count-lines", { filename: "somefile.txt" } );
+```
+
+##### Options
+
+* **delay** [60000] number of milliseconds to wait after the queue has been emptied before trying to read more jobs from the database
+* **timeout** [Infinity] number of milliseconds to allow for inactivity timeout, which is the time from the start of the job processing, until any update occurs (completion or progress). It's recommended in order to prevent cases where the `done` method doesn't get called, and the jobs remains a zombie forever.
+* **concurrency** [1] number of parallel processes allowed
 
