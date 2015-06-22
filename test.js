@@ -269,12 +269,15 @@ describe( "Duty", function () {
         }, { timeout: 20 } );
 
         setTimeout( function () {
-            duty.get( job, function ( err, job ) {
-                assert.equal( job.status, "error" );
-                assert.equal( job.error, "Expired due to inactivity" );
-                assert.equal( everror, "Expired due to inactivity" );
-                done( err );
-            })
+            duty.expire( function () {
+                duty.get( job, function ( err, job ) {
+                    assert.equal( job.status, "error" );
+                    assert.equal( job.error, "Expired due to inactivity" );
+                    assert.equal( everror, "Expired due to inactivity" );
+                    done( err );
+                })
+            });
+            
         }, 30 )
     });
 

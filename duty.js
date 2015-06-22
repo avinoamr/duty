@@ -10,6 +10,7 @@ duty.unregister = unregister;
 duty.get = get;
 duty.cancel = cancel;
 duty.db = db;
+duty.expire = expire;
 
 function duty ( name, data, done ) {
     done || ( done = function () {} );
@@ -89,108 +90,74 @@ function unregister( name ) {
     }
 }
 
+var running = {};
 function runloop ( name, fn, options ) {
 
     // listener was unregistered or overridden
     if ( listeners[ name ] != fn ) return; 
+    var timeout = ( options.timeout && options.timeout != Infinity )
+        ? options.timeout : null;
 
     // run the next job in the queue
     next( name, function ( err, job ) {
 
         // no job found, try again after `delay` seconds
-        if ( !job ) return setTimeout( function () {
-            runloop( name, fn, options )
-        }, options.delay );
+        if ( !job ) {
+            return setTimeout( function () {
+                runloop( name, fn, options )
+            }, options.delay ).unref();
+        }
 
         // create the job emitter and bind the event listeners used to control
         // the life-cycle of the job
-        job = extend( new events.EventEmitter(), job )
-            .on( "progress", onprogress )
-            .once( "error", onerror )
-            .once( "error", resetTimeout )
-            .once( "success", onsuccess )
-            .once( "success", resetTimeout );
+        running[ job.id ] = job = extend( new events.EventEmitter(), job )
+            .on( "progress", function ( loaded, total ) {
+                if ( this.status != "running" ) return;
+                var expires_on;
+                if ( timeout ) {
+                    expires_on = new Date( new Date().getTime() + timeout )
+                        .toISOString();
+                }
+
+                update({ 
+                    id: this.id, 
+                    loaded: loaded, 
+                    total: total,
+                    expires_on: expires_on
+                }, function ( err, found ) {
+                    extend( this, found );
+                    if ( err || this.status == "error" ) {
+                        this.emit( "error", err || this.error );
+                    }
+                }.bind( this ) );
+            })
+            .once( "error", done )
+            .once( "success", done.bind( job, undefined ) )
 
         // start running it
-        var completed = false;
-        resetTimeout();
+        job.emit( "progress", null, null )
         try {
-            fn.call( job, job.data, function ( err, result ) {
-                if ( completed ) return; // disregard multiple calls?
-                completed = true;
-
-                if ( err ) {
-                    job.emit( "error", err );
-                } else {
-                    job.emit( "success", result );
-                }
-                runloop( name, fn, options );
-            });
+            fn.call( job, job.data, done );
         } catch ( err ) {
-            if ( completed ) return;
-            completed = true;
-            job.emit( "error", err );
+            done( err );
+        }
+
+        function done ( err, result ) {
+            if ( !running[ job.id ] ) return; // disregard multiple completions
+            delete running[ job.id ];
+            update({
+                id: job.id,
+                status: err ? "error" : "success",
+                error: err instanceof Error ? err.toString() : ( err || undefined ),
+                result: err ? undefined : result,
+                done: true,
+                end_on: new Date().toISOString()
+            }, function ( err ) {
+                if ( err ) job.emit( "error", err );
+            })
             runloop( name, fn, options );
         }
-
-        // inactivity timeout
-        var timeout;
-        function resetTimeout() {
-            clearTimeout( timeout );
-            if ( options.timeout < Infinity && job.status == "running" ) {
-                timeout = setTimeout( function () {
-                    job.emit( "error", "Expired due to inactivity" );
-                }, options.timeout )
-            }
-        }
     })
-}
-
-function onsuccess( result ) {
-    // don't update completed jobs
-    if ( this.status != "running" ) return;
-
-    update({
-        id: this.id,
-        status: ( this.status = "success" ),
-        result: result,
-        done: true,
-        end_on: new Date().toISOString()
-    }, function ( err, found ) {
-        extend( this, found );
-        if ( err || this.status == "error" ) {
-            this.emit( "error", err || this.error );
-        }
-    }.bind( this ) );
-}
-
-function onerror( err ) {
-    // don't update completed jobs
-    if ( this.status != "running" ) return;
-
-    update({
-        id: this.id,
-        done: true,
-        status: ( this.status = "error" ),
-        error: err instanceof Error ? err.toString() : err,
-        end_on: new Date().toISOString()
-    }, function ( err, found ) {
-        extend( this, found )
-    });
-}
-
-function onprogress ( loaded, total ) {
-    if ( this.status != "running" ) return;
-    update({ 
-        id: this.id, 
-        loaded: loaded, 
-        total: total 
-    }, function ( err, found ) {
-        extend( this, found );
-        if ( err || this.status == "error" ) {
-            this.emit( "error", err || this.error );
-        }
-    }.bind( this ) );
 }
 
 // claim and return the next available job in the queue
@@ -281,6 +248,38 @@ function db( conn_ ) {
     }
     return conn = conn_;
 }
+
+// find and remove jobs that were expired
+function expire( done ) {
+    var now = new Date();
+    var expired = [];
+    new conn.Cursor()
+        .find({ status: "running" })
+        .once( "error", done )
+        .once( "finish", done )
+        .on( "data", function ( job ) {
+            if ( job.expires_on && new Date( job.expires_on ) < now ) {
+                job.error = "Expired due to inactivity";
+                job.updated_on = new Date().toISOString();
+                job.status = "error";
+                job.error = "Expired due to inactivity";
+                this.write( job );
+            }
+
+            // if it's running - update it.
+            if ( running[ job.id ] && job.status == "error" ) {
+                running[ job.id ].emit( "error", job.error );
+            }
+        })
+        .once( "end", function () {
+            this.end();
+        });
+}
+
+// clear expired jobs once a minute
+setInterval( expire.bind( null, function ( err ) {
+    console.error( "Duty Error: ", err.stack );
+} ), 60000 ).unref(); // don't wait for it
 
 
 
