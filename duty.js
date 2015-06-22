@@ -202,7 +202,7 @@ function claim( job, done ) {
         get( job.id, function ( err, job ) {
             if ( err ) return done( err );
 
-            // job is already claimed by concurrent process
+            // job is already claimed by a concurrent process
             done( null, job.claim == claim ? job : null )
         })
     })
@@ -278,7 +278,9 @@ function expire( done ) {
 
 // clear expired jobs once a minute
 setInterval( expire.bind( null, function ( err ) {
-    console.error( "Duty Error: ", err.stack );
+    if ( err ) {
+        console.error( "Duty Error: ", err.stack || err );
+    }
 } ), 60000 ).unref(); // don't wait for it
 
 

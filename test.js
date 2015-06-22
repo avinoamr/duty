@@ -196,28 +196,6 @@ describe( "Duty", function () {
         }, 20 );
     });
 
-    it( "prevents duplicate processing of the same job", function ( done ) {
-        var input = [];
-        var job = duty( "test", {} );
-        
-        // start two listeners, while the second one will override the first,
-        // both will still have access to the same job because the first 
-        // listener will attempt to read at least one job before it's overridden
-        // but will not have enough time to change its status
-        var fn = function ( data, cb ) {
-            input.push( data );
-            cb();
-        }
-
-        duty.register( "test", fn );
-        duty.register( "test", fn );
-
-        setTimeout( function () {
-            assert.equal( input.length, 1 );
-            done();
-        }, 20 )
-    });
-
     it( "updates the progress", function ( done ) {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
@@ -339,6 +317,28 @@ describe( "Duty", function () {
             assert.equal( results[ 2 ], 3 );
             done();
         },  100 )
+    });
+
+    it( "prevents duplicate processing of the same job", function ( done ) {
+        var input = [];
+        var job = duty( "test", {} );
+        
+        // start two listeners, while the second one will override the first,
+        // both will still have access to the same job because the first 
+        // listener will attempt to read at least one job before it's overridden
+        // but will not have enough time to change its status
+        var fn = function ( data, cb ) {
+            input.push( data );
+            cb();
+        }
+
+        duty.register( "test", fn, { concurrency: 10 } );
+        duty.register( "test", fn, { concurrency: 10 } );
+
+        setTimeout( function () {
+            assert.equal( input.length, 1 );
+            done();
+        }, 100 )
     });
 
     it( "validates the concurrency", function () {
