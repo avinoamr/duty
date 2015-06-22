@@ -105,7 +105,7 @@ function runloop ( name, fn, options ) {
         if ( !job ) {
             return setTimeout( function () {
                 runloop( name, fn, options )
-            }, options.delay ).unref();
+            }, options.delay );
         }
 
         // create the job emitter and bind the event listeners used to control
