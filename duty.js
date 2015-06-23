@@ -136,9 +136,21 @@ function runloop ( name, fn, options ) {
         // start running it
         job.emit( "progress", null, null )
         try {
-            fn.call( job, job.data, done );
+            fn.call( job, job.data, function ( err, result ) {
+                if ( err ) {
+                    job.emit( "error", err );
+                } else {
+                    job.emit( "success", result )
+                }
+            });
         } catch ( err ) {
-            done( err );
+            job.emit( "error", err );
+        }
+
+        // did it start with an error?
+        // it's possible when the job is cancelled before it started running
+        if ( job.status == "error" ) {
+            job.emit( "error", job.error );
         }
 
         function done ( err, result ) {
@@ -195,14 +207,21 @@ function claim( job, done ) {
         status: "running",
         start_on: new Date().toISOString(),
         claim: claim
-    }, function ( err ) {
+    }, function ( err, j ) {
         if ( err ) return done( err );
-        get( job.id, function ( err, job ) {
-            if ( err ) return done( err );
 
-            // job is already claimed by a concurrent process
-            done( null, job.claim == claim ? job : null )
-        })
+        // give some time for competing claims to update
+        // this is still not bulletproof. should re-think it, but it passes
+        // for the bad-case test of a very slow write, and very fast read
+        setTimeout( function () {
+            get( job.id, function ( err, job ) {
+                if ( err ) return done( err );
+
+                // job is already claimed by a concurrent process
+                done( null, job.claim == claim ? job : null )
+            })
+        }, 20 )
+        
     })
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "duty",
-  "version": "2.2.9",
+  "version": "2.2.10",
   "description": "Ridiculously simple Javascript job queue",
   "main": "duty.js",
   "scripts": {

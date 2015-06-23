@@ -46,6 +46,7 @@ describe( "Duty", function () {
         duty( "test", all[ 1 ] );
         duty( "test", all[ 2 ] );
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
             count += 1;
             input.push( data );
             cb();
@@ -69,6 +70,7 @@ describe( "Duty", function () {
             { alice: "bob" }
         ];
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
             input.push( data );
             count += 1;
             cb();
@@ -124,6 +126,7 @@ describe( "Duty", function () {
     it( "stores job result", function ( done ) {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
             cb( null, { ok: 1 } );
             setTimeout( complete, 20 );
         })
@@ -178,10 +181,12 @@ describe( "Duty", function () {
     it( "calling done multiple times doesn't modify the job", function ( done ) {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", function () {
+                setTimeout( complete, 20 );
+            });
             cb( null, "Successful" );
             setTimeout( function () {
                 cb( "Something went wrong" );
-                setTimeout( complete, 20 );
             }, 20 );
         })
 
@@ -198,7 +203,9 @@ describe( "Duty", function () {
     it( "stores errors for syncly thrown exceptions", function ( done ) {
         var job = duty( "test", {} )
         duty.register( "test", function () {
-            setTimeout( complete, 20 );
+            this.once( "error", function () {
+                setTimeout( complete, 20 );
+            });
             throw new Error( "Something went wrong" )
         });
 
@@ -216,6 +223,7 @@ describe( "Duty", function () {
     it( "updates the progress", function ( done ) {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
             this.emit( "progress", 10, 100 );
             setTimeout( function () {
                 cb();
@@ -236,17 +244,18 @@ describe( "Duty", function () {
         var job = duty( "test", {} );
         var count = 0, status, err;
         duty.register( "test", function ( data, cb ) {
-            var interval = setInterval( function () {
-                count += 1;
-                this.emit( "progress" ); // force a job update
-            }.bind( this ), 10 );
-
-            // external error
             this.on( "error", function ( _err ) {
+                // external error
                 clearInterval( interval )
                 err = _err;
                 setTimeout( complete, 20 )
             });
+
+            count = 1;
+            var interval = setInterval( function () {
+                count += 1;
+                this.emit( "progress" ); // force a job update
+            }.bind( this ), 10 );
         });
 
         function complete () {
@@ -259,7 +268,7 @@ describe( "Duty", function () {
             duty.cancel( job, function ( err ) {
                 if ( err ) done( err );
             });
-        }, 20 );
+        }, 30 );
     });
 
     it( "expires jobs after the inactivity timeout", function ( done ) {
@@ -269,9 +278,10 @@ describe( "Duty", function () {
             this.on( "error", function ( err ) {
                 everror = err;
             })
+            setTimeout( complete, 20 );
         }, { timeout: 20 } );
 
-        setTimeout( function () {
+        function complete() {
             duty.expire( function () {
                 duty.get( job, function ( err, job ) {
                     assert.equal( job.status, "error" );
@@ -281,21 +291,23 @@ describe( "Duty", function () {
                 })
             });
             
-        }, 30 )
+        }
     });
 
     it( "doesn't expire jobs when they complete on time", function ( done ) {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
             setTimeout( cb, 5 );
+            setTimeout( complete, 20 );
         }, { timeout: 20 } );
 
-        setTimeout( function () {
+        function complete() {
             duty.get( job, function ( err, job ) {
                 assert.equal( job.status, "success" );
                 done( err );
             })
-        }, 30 )
+        }
     });
 
     it( "runs listeners serially", function ( done ) {
@@ -303,22 +315,26 @@ describe( "Duty", function () {
         duty( "test", {});
         duty( "test", {});
 
-        var concurrent = 0, results = [];
+        var concurrent = 0, results = [], timeout;
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
             concurrent += 1;
             results.push( concurrent )
             setTimeout( function () {
+                clearTimeout( timeout );
                 concurrent -= 1;
                 cb();
+                timeout = setTimeout( complete, 50 )
             }, 20 )
+
         }, { concurrency: 1 } );
 
-        setTimeout( function () {
+        function complete() {
             assert.equal( results[ 0 ], 1 );
             assert.equal( results[ 1 ], 1 );
             assert.equal( results[ 2 ], 1 );
             done();
-        }, 100 )
+        }
     });
 
     it( "runs listeners concurrently", function ( done ) {
@@ -326,25 +342,43 @@ describe( "Duty", function () {
         duty( "test", {});
         duty( "test", {});
 
-        var concurrent = 0, results = [];
+        var concurrent = 0, results = [], timeout;
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
             concurrent += 1;
             results.push( concurrent )
             setTimeout( function () {
+                clearTimeout( timeout );
                 concurrent -= 1;
                 cb();
+                timeout = setTimeout( complete, 50 )
             }, 30 )
         }, { concurrency: 10 } );
 
-        setTimeout( function () {
+        function complete() {
             assert.equal( results[ 0 ], 1 );
             assert.equal( results[ 1 ], 2 );
             assert.equal( results[ 2 ], 3 );
             done();
-        },  100 )
+        }
     });
 
     it( "prevents duplicate processing of the same job", function ( done ) {
+        // emulate a worst case scenario, where the update takes a long time,
+        // and the reading is very fast (dbstream-memory reads in sync)
+        var db = duty.db();
+        var save = db.Cursor.prototype._save;
+        db.Cursor.prototype._save = function () {
+            if ( this.__saving ) return;
+            this.__saving = true;
+            var args = arguments, that = this;
+            setTimeout( function () {
+                that.__saving = false;
+                save.apply( that, args )
+            }, 50 )
+        }
+        
+
         var input = [];
         var job = duty( "test", {} );
         
@@ -352,18 +386,23 @@ describe( "Duty", function () {
         // both will still have access to the same job because the first 
         // listener will attempt to read at least one job before it's overridden
         // but will not have enough time to change its status
+        var timeout;
         var fn = function ( data, cb ) {
+            this.once( "error", done );
+            clearTimeout( timeout );
             input.push( data );
             cb();
+            timeout = setTimeout( complete, 30 )
         }
 
         duty.register( "test", fn, { concurrency: 10 } );
         duty.register( "test", fn, { concurrency: 10 } );
 
-        setTimeout( function () {
+        function complete() {
+            db.Cursor.prototype._save = save;
             assert.equal( input.length, 1 );
             done();
-        }, 100 )
+        }
     });
 
     it( "validates the concurrency", function () {
@@ -383,6 +422,7 @@ describe( "Duty", function () {
     it( "prevents duplicate running of the same data", function ( done ) {
         var job;
         duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
             job = this;
             setTimeout( complete, 1 );
         }, { delay: 20 })
