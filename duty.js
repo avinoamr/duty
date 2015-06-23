@@ -20,7 +20,6 @@ function duty ( name, data, done ) {
         id: id,
         status: "pending",
         data: data,
-        done: false,
     };
     
     var added_on = new Date().toISOString();
@@ -48,7 +47,7 @@ function duty ( name, data, done ) {
             done( err )
         })
         .on( "end", push )
-        .find({ done: false, dataid: data.id })
+        .find({ status: { $nin: [ "success", "error" ] }, dataid: data.id })
     } else {
         push();
     }
@@ -150,7 +149,6 @@ function runloop ( name, fn, options ) {
                 status: err ? "error" : "success",
                 error: err instanceof Error ? err.toString() : ( err || undefined ),
                 result: err ? undefined : result,
-                done: true,
                 end_on: new Date().toISOString()
             }, function ( err ) {
                 if ( err ) job.emit( "error", err );
@@ -237,7 +235,7 @@ function cancel( job, done ) {
     update({ 
         id: job.id || job,
         status: "error",
-        error: "Canceled"
+        error: "Canceled",
     }, done )
 }
 
