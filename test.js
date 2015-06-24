@@ -220,6 +220,17 @@ describe( "Duty", function () {
         }
     });
 
+    it( "all emitted errors get captured", function ( done ) {
+        duty( "test", {} );
+        duty.register( "test", function () {
+            this.emit( "error", "Error 1" );
+            setTimeout( function () {
+                this.emit( "error", "Error 2" );
+                setTimeout( done, 30 );
+            }.bind( this ), 30 )
+        })
+    })
+
     it( "updates the progress", function ( done ) {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {

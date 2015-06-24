@@ -130,7 +130,7 @@ function runloop ( name, fn, options ) {
                     }
                 }.bind( this ) );
             })
-            .once( "error", done )
+            .on( "error", done ) // captures all errors
             .once( "success", done.bind( job, undefined ) )
 
         // start running it
