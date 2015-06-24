@@ -111,7 +111,7 @@ function runloop ( name, fn, options ) {
         // the life-cycle of the job
         running[ job.id ] = job = extend( new events.EventEmitter(), job )
             .on( "progress", function ( loaded, total ) {
-                if ( this.status != "running" ) return;
+                if ( !running[ job.id ] ) return; // already done
                 var expires_on;
                 if ( timeout ) {
                     expires_on = new Date( new Date().getTime() + timeout )
