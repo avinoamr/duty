@@ -220,7 +220,7 @@ function claim( job, done ) {
                 // job is already claimed by a concurrent process
                 done( null, job.claim == claim ? job : null )
             })
-        }, 20 )
+        }, 100 )
         
     })
 }

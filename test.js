@@ -255,7 +255,7 @@ describe( "Duty", function () {
         var job = duty( "test", {} );
         var count = 0, status, err;
         duty.register( "test", function ( data, cb ) {
-            this.on( "error", function ( _err ) {
+            this.once( "error", function ( _err ) {
                 // external error
                 clearInterval( interval )
                 err = _err;
@@ -335,7 +335,7 @@ describe( "Duty", function () {
                 clearTimeout( timeout );
                 concurrent -= 1;
                 cb();
-                timeout = setTimeout( complete, 50 )
+                timeout = setTimeout( complete, 220 )
             }, 20 )
 
         }, { concurrency: 1 } );
