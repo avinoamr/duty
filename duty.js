@@ -276,7 +276,6 @@ function expire( done ) {
         .once( "finish", done )
         .on( "data", function ( job ) {
             if ( job.expires_on && new Date( job.expires_on ) < now ) {
-                job.error = "Expired due to inactivity";
                 job.updated_on = new Date().toISOString();
                 job.status = "error";
                 job.error = "Expired due to inactivity";
