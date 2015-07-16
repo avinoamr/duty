@@ -110,7 +110,7 @@ function runloop ( name, fn, options ) {
         // create the job emitter and bind the event listeners used to control
         // the life-cycle of the job
         running[ job.id ] = job = extend( new events.EventEmitter(), job )
-            .on( "progress", function ( loaded, total ) {
+            .on( "progress", function ( loaded, total, msg ) {
                 if ( !running[ job.id ] ) return; // already done
                 var expires_on;
                 if ( timeout ) {
@@ -118,12 +118,24 @@ function runloop ( name, fn, options ) {
                         .toISOString();
                 }
 
-                update({ 
-                    id: this.id, 
-                    loaded: loaded, 
-                    total: total,
+                var changes = {
+                    id: this.id,
                     expires_on: expires_on
-                }, function ( err, found ) {
+                };
+
+                if ( loaded ) {
+                    changes.loaded = loaded;
+                }
+
+                if ( total ) {
+                    changes.total = total;
+                }
+
+                if ( msg ) {
+                    changes.progress = msg;
+                }
+
+                update( changes, function ( err, found ) {
                     extend( this, found );
                     if ( err || this.status == "error" ) {
                         this.emit( "error", err || this.error );
