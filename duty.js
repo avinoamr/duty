@@ -100,6 +100,10 @@ function runloop ( name, fn, options ) {
     // run the next job in the queue
     next( name, function ( err, job ) {
 
+        if ( err ) {
+            console.error( new Date().toISOString(), err, err.stack );
+        }
+
         // no job found, try again after `delay` seconds
         if ( !job ) {
             return setTimeout( function () {
@@ -189,7 +193,10 @@ function next( name, done ) {
         .find({ name: name, status: "pending" })
         .limit( 1 )
         .once( "data", function ( data ) { job = data } )
-        .once( "error", done )
+        .once( "error", function ( err ) {
+            this.removeAllListeners();
+            done( err );
+        })
         .once( "end", function () {
             if ( !job ) return done();
 
