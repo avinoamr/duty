@@ -87,5 +87,6 @@ duty( "count-lines", { filename: "somefile.txt" } );
 
 * **delay** [60000] number of milliseconds to wait after the queue has been emptied before trying to read more jobs from the database
 * **timeout** [Infinity] number of milliseconds to allow for inactivity timeout, which is the time from the start of the job processing, until any update occurs (completion or progress). It's recommended in order to prevent cases where the `done` method doesn't get called, and the jobs remains a zombie forever.
+* **retries** [0] number of times to re-try a job once it has failed
 * **concurrency** [1] number of parallel processes allowed
 

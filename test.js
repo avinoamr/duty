@@ -158,6 +158,31 @@ describe( "Duty", function () {
         }
     });
 
+    it( "supports job retries", function ( done ) {
+        var job = duty( "test", {} );
+        var errorNext = true;
+
+        duty.register( "test", function ( data, cb ) {
+            if ( errorNext ) {
+                cb( "Something went wrong" );
+                errorNext = false;
+            } else {
+                cb( null, { ok: 1 } );
+                setTimeout( complete, 20 )
+            }
+            
+        }, { retries: 1, delay: 10 } )
+        function complete() {
+            duty.get( job.id, function ( err, job ) {
+                assert.equal( typeof job.error, "undefined" );
+                assert.deepEqual( job.result, { ok: 1 } );
+                assert.equal( job.status, "success" );
+                assert( !isNaN( new Date( job.end_on ).getTime() ) )
+                done( err );
+            })
+        }
+    })
+
     it( "doesn't modify completed jobs", function ( done ) {
         var job = duty( "test", {} );
         duty.register( "test", function ( data, cb ) {

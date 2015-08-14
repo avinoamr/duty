@@ -5,6 +5,7 @@ var extend = require( "extend" );
 var conn = require( "dbstream-memory" ).connect();
 
 module.exports = duty;
+duty.add = duty;
 duty.register = register;
 duty.unregister = unregister;
 duty.get = get;
@@ -65,7 +66,8 @@ function register ( name, fn, options ) {
     options = extend({ 
         delay: 60000, // 1-minute?
         timeout: Infinity,
-        concurrency: 1
+        concurrency: 1,
+        retries: 0,
     }, options );
 
     if ( options.concurrency == Infinity || options.concurrency <= 0 ) {
@@ -172,15 +174,36 @@ function runloop ( name, fn, options ) {
         function done ( err, result ) {
             if ( !running[ job.id ] ) return; // disregard multiple completions
             delete running[ job.id ];
-            update({
-                id: job.id,
-                status: err ? "error" : "success",
-                error: err instanceof Error ? err.toString() : ( err || undefined ),
-                result: err ? undefined : result,
-                end_on: new Date().toISOString()
-            }, function ( err ) {
-                if ( err ) job.emit( "error", err );
-            })
+
+            var retries = job.retries || 0;
+            if ( err && retries < options.retries ) {
+                update({
+                    id: job.id,
+                    status: "pending",
+                    retries: retries + 1,
+                }, function ( err ) {
+                    if ( err ) job.emit( "error", err );
+                })
+            } else if ( err ) {
+                update({
+                    id: job.id,
+                    status: "error",
+                    error: err instanceof Error ? err.toString() : err,
+                    end_on: new Date().toISOString()
+                }, function ( err ) {
+                    if ( err ) job.emit( "error", err );
+                })
+            } else {
+                update({
+                    id: job.id,
+                    status: "success",
+                    result: result,
+                    end_on: new Date().toISOString()
+                }, function ( err ) {
+                    if ( err ) job.emit( "error", err );
+                })
+            }
+
             runloop( name, fn, options );
         }
     })
