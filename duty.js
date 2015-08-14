@@ -68,6 +68,7 @@ function register ( name, fn, options ) {
         timeout: Infinity,
         concurrency: 1,
         retries: 0,
+        backoff: 0
     }, options );
 
     if ( options.concurrency == Infinity || options.concurrency <= 0 ) {
@@ -177,10 +178,14 @@ function runloop ( name, fn, options ) {
 
             var retries = job.retries || 0;
             if ( err && retries < options.retries ) {
+                var startAfter = new Date();
+                startAfter.setTime( startAfter.getTime() + options.backoff );
+
                 update({
                     id: job.id,
                     status: "pending",
                     retries: retries + 1,
+                    startAfter: startAfter.toISOString()
                 }, function ( err ) {
                     if ( err ) job.emit( "error", err );
                 })
@@ -211,16 +216,21 @@ function runloop ( name, fn, options ) {
 
 // claim and return the next available job in the queue
 function next( name, done ) {
-    var job;
+    var jobs = [];
     return new conn.Cursor()
         .find({ name: name, status: "pending" })
         .limit( 1 )
-        .once( "data", function ( data ) { job = data } )
+        .on( "data", function ( data ) { jobs.push( data ) } )
         .once( "error", function ( err ) {
             this.removeAllListeners();
             done( err );
         })
         .once( "end", function () {
+            var now = new Date();
+            var job = jobs.filter( function ( job ) {
+                return !job.startAfter || new Date( job.startAfter ) <= now;
+            })[ 0 ];
+
             if ( !job ) return done();
 
             // claim ownership of this job to prevent concurrently
