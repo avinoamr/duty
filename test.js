@@ -174,10 +174,43 @@ describe( "Duty", function () {
         }, { retries: 1, delay: 10 } )
         function complete() {
             duty.get( job.id, function ( err, job ) {
+                assert.equal( job.lastError, "Something went wrong" )
                 assert.equal( typeof job.error, "undefined" );
                 assert.deepEqual( job.result, { ok: 1 } );
                 assert.equal( job.status, "success" );
                 assert( !isNaN( new Date( job.end_on ).getTime() ) )
+                done( err );
+            })
+        }
+    })
+
+    it( "doesn't retry canceled jobs", function ( done ) {
+        var job = duty( "test", {} );
+        var count = 0, status, err;
+        duty.register( "test", function ( data, cb ) {
+            count += 1;
+
+            this.once( "error", function ( _err ) {
+                // external error
+                clearInterval( interval )
+                setTimeout( complete, 200 )
+            });
+
+            var interval = setInterval( function () {
+                this.emit( "progress" ); // force a job update
+            }.bind( this ), 10 );
+        }, { retries: 1, delay: 10 } );
+
+        setTimeout( function () {
+            duty.cancel( job, function ( err ) {
+                if ( err ) done( err );
+            });
+        }, 30 );
+
+        function complete() {
+            duty.get( job.id, function ( err, job ) {
+                assert.equal( job.error, "Canceled" );
+                assert.equal( count, 1 );
                 done( err );
             })
         }

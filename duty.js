@@ -177,7 +177,7 @@ function runloop ( name, fn, options ) {
             delete running[ job.id ];
 
             var retries = job.retries || 0;
-            if ( err && retries < options.retries ) {
+            if ( err && err != "Canceled" && retries < options.retries ) {
                 var startAfter = new Date();
                 startAfter.setTime( startAfter.getTime() + options.backoff );
 
@@ -185,7 +185,8 @@ function runloop ( name, fn, options ) {
                     id: job.id,
                     status: "pending",
                     retries: retries + 1,
-                    startAfter: startAfter.toISOString()
+                    startAfter: startAfter.toISOString(),
+                    lastError: err.toString(),
                 }, function ( err ) {
                     if ( err ) job.emit( "error", err );
                 })
@@ -219,7 +220,6 @@ function next( name, done ) {
     var jobs = [];
     return new conn.Cursor()
         .find({ name: name, status: "pending" })
-        .limit( 1 )
         .on( "data", function ( data ) { jobs.push( data ) } )
         .once( "error", function ( err ) {
             this.removeAllListeners();
