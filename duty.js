@@ -176,8 +176,14 @@ function runloop ( name, fn, options ) {
             if ( !running[ job.id ] ) return; // disregard multiple completions
             delete running[ job.id ];
 
+            if ( err == "Canceled" ) {
+                err = new Error( err );
+                err.retryable = false;
+            }
+
             var retries = job.retries || 0;
-            if ( err && err != "Canceled" && retries < options.retries ) {
+            var retryable = err && err.retryable !== false;
+            if ( retryable && retries < options.retries ) {
                 var startAfter = new Date();
                 startAfter.setTime( startAfter.getTime() + options.backoff );
 

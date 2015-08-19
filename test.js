@@ -209,7 +209,7 @@ describe( "Duty", function () {
 
         function complete() {
             duty.get( job.id, function ( err, job ) {
-                assert.equal( job.error, "Canceled" );
+                assert.equal( job.error, "Error: Canceled" );
                 assert.equal( count, 1 );
                 done( err );
             })
