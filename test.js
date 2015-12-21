@@ -28,7 +28,7 @@ describe( "Duty", function () {
         db.Cursor.prototype._save = function ( data, cb ) {
             cb( new Error( "Something went wrong" ) );
         }
-        
+
         duty( "test", { hello: "world" }, function ( err ) {
             db.Cursor.prototype._save = save;
             assert.equal( err.message, "Something went wrong" )
@@ -170,7 +170,7 @@ describe( "Duty", function () {
                 cb( null, { ok: 1 } );
                 setTimeout( complete, 20 )
             }
-            
+
         }, { retries: 1, delay: 10 } )
         function complete() {
             duty.get( job.id, function ( err, job ) {
@@ -340,26 +340,27 @@ describe( "Duty", function () {
         }, 30 );
     });
 
-    it( "expires jobs after the inactivity timeout", function ( done ) {
+    it( "retries jobs after the inactivity timeout", function ( done ) {
         var everror;
-        var job = duty( "test", {} );
-        duty.register( "test", function ( data, cb ) {
+        var job = duty( "test_expire", {} );
+        duty.register( "test_expire", function ( data, cb ) {
             this.on( "error", function ( err ) {
                 everror = err;
             })
             setTimeout( complete, 20 );
-        }, { timeout: 20 } );
+        }, { timeout: 20, retries: 1 } );
 
-        function complete() {
-            duty.expire( function () {
-                duty.get( job, function ( err, job ) {
-                    assert.equal( job.status, "error" );
-                    assert.equal( job.error, "Expired due to inactivity" );
-                    assert.equal( everror, "Expired due to inactivity" );
-                    done( err );
-                })
+        function complete () {
+            duty.expire( function() {
+                process.nextTick( function() {
+                    duty.get( job, function( err, job ) {
+                        assert.equal( 'startAfter' in job, true );
+                        assert.equal( job.retries > 0, true );
+
+                        done( err );
+                    });
+                });
             });
-            
         }
     });
 
@@ -446,11 +447,11 @@ describe( "Duty", function () {
                 save.apply( that, args )
             }, 50 )
         }
-        
+
 
         var input = [];
         var job = duty( "test", {} );
-        
+
         // start two listeners, while the second one will override the first,
         // both will still have access to the same job because the first 
         // listener will attempt to read at least one job before it's overridden

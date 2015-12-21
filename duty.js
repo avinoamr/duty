@@ -1,5 +1,4 @@
 var util = require( "util" );
-var crypto = require( "crypto" );
 var events = require( "events" );
 var extend = require( "extend" );
 var conn = require( "dbstream-memory" ).connect();
@@ -20,9 +19,9 @@ function duty ( name, data, done ) {
         name: name,
         id: id,
         status: "pending",
-        data: data,
+        data: data
     };
-    
+
     var added_on = new Date().toISOString();
     var cursor = new conn.Cursor()
         .on( "error", done )
@@ -34,21 +33,21 @@ function duty ( name, data, done ) {
     if ( data.id ) {
         var duplicate = false;
         cursor.on( "data", function ( job ) {
-            var err = "Duplicate running job detected in Job #" + job.id;
-            err = extend( new Error( err ), {
-                code: "duplicate",
-                dataid: data.id,
-                jobid: job.id,
-                status: job.status,
-                description: "Cancel the running job first, before adding " +
+                var err = "Duplicate running job detected in Job #" + job.id;
+                err = extend( new Error( err ), {
+                    code: "duplicate",
+                    dataid: data.id,
+                    jobid: job.id,
+                    status: job.status,
+                    description: "Cancel the running job first, before adding " +
                     "a new one with the same data.id"
+                })
+
+                this.removeAllListeners()
+                done( err )
             })
-            
-            this.removeAllListeners()
-            done( err )
-        })
-        .on( "end", push )
-        .find({ status: { $nin: [ "success", "error" ] }, dataid: data.id })
+            .on( "end", push )
+            .find({ status: { $nin: [ "success", "error" ] }, dataid: data.id })
     } else {
         push();
     }
@@ -59,11 +58,11 @@ function duty ( name, data, done ) {
     }
 }
 
-// register a listener 
+// register a listener
 var listeners = {};
 function register ( name, fn, options ) {
     listeners[ name ] = fn;
-    options = extend({ 
+    options = extend({
         delay: 60000, // 1-minute?
         timeout: Infinity,
         concurrency: 1,
@@ -76,7 +75,7 @@ function register ( name, fn, options ) {
     }
 
     for ( var i = 0 ; i < options.concurrency ; i += 1 ) {
-        // space out the concurrent runloops to reduce the likelihood of 
+        // space out the concurrent runloops to reduce the likelihood of
         // claim conflicts
         setTimeout( function () {
             runloop( name, fn, options );
@@ -96,12 +95,12 @@ var running = {};
 function runloop ( name, fn, options ) {
 
     // listener was unregistered or overridden
-    if ( listeners[ name ] != fn ) return; 
+    if ( listeners[ name ] != fn ) return;
     var timeout = ( options.timeout && options.timeout != Infinity )
         ? options.timeout : null;
 
     // run the next job in the queue
-    next( name, function ( err, job ) {
+    next( name, options, function ( err, job ) {
 
         if ( err ) {
             console.error( new Date().toISOString(), err, err.stack );
@@ -181,30 +180,8 @@ function runloop ( name, fn, options ) {
                 err.retryable = false;
             }
 
-            var retries = job.retries || 0;
-            var retryable = err && err.retryable !== false;
-            if ( retryable && retries < options.retries ) {
-                var startAfter = new Date();
-                startAfter.setTime( startAfter.getTime() + options.backoff );
-
-                update({
-                    id: job.id,
-                    status: "pending",
-                    retries: retries + 1,
-                    startAfter: startAfter.toISOString(),
-                    lastError: err.toString(),
-                }, function ( err ) {
-                    if ( err ) job.emit( "error", err );
-                })
-            } else if ( err ) {
-                update({
-                    id: job.id,
-                    status: "error",
-                    error: err instanceof Error ? err.toString() : err,
-                    end_on: new Date().toISOString()
-                }, function ( err ) {
-                    if ( err ) job.emit( "error", err );
-                })
+            if ( err ) {
+                handleJobError( job, err, options );
             } else {
                 update({
                     id: job.id,
@@ -222,7 +199,7 @@ function runloop ( name, fn, options ) {
 }
 
 // claim and return the next available job in the queue
-function next( name, done ) {
+function next( name, options, done ) {
     var jobs = [];
     return new conn.Cursor()
         .find({ name: name, status: "pending" })
@@ -241,12 +218,12 @@ function next( name, done ) {
 
             // claim ownership of this job to prevent concurrently
             // running the same job by multiple processes
-            claim( job, function ( err, job ) {
+            claim( job, options, function ( err, job ) {
                 if ( err ) return done( err );
 
                 // job is already claimed by concurrent process,
                 // continue to the next job
-                if ( job == null ) return next( name, done );
+                if ( job == null ) return next( name, options, done );
 
                 // claimed successfuly, return it
                 done( null, job )
@@ -255,16 +232,17 @@ function next( name, done ) {
 }
 
 // attempts to claim ownership on a job by tagging it with a claim id
-// and optimistically verifying that no other process has claimed it 
+// and optimistically verifying that no other process has claimed it
 // concurrently. This is required in order for the library to remain database
 // agnostic and not reliable on any underlying locking mechanism
-function claim( job, done ) {
+function claim( job, options, done ) {
     var claim = Math.random().toString( 36 ).substr( 2 );
-    update({ 
-        id: job.id, 
+    update({
+        id: job.id,
         status: "running",
         start_on: new Date().toISOString(),
-        claim: claim
+        claim: claim,
+        options: options
     }, function ( err, j ) {
         if ( err ) return done( err );
 
@@ -279,7 +257,7 @@ function claim( job, done ) {
                 done( null, job.claim == claim ? job : null )
             })
         }, 100 )
-        
+
     })
 }
 
@@ -309,7 +287,7 @@ function update( job, done ) {
 }
 
 function cancel( job, done ) {
-    update({ 
+    update({
         id: job.id || job,
         status: "error",
         error: "Canceled",
@@ -324,28 +302,53 @@ function db( conn_ ) {
     return conn = conn_;
 }
 
+// Handle job error
+function handleJobError( job, err, options ) {
+    var retries = job.retries || 0;
+    var retryable = err && err.retryable !== false;
+
+    if ( retryable && retries < options.retries ) {
+        var startAfter = new Date();
+        startAfter.setTime( startAfter.getTime() + options.backoff );
+
+        update( {
+            id: job.id,
+            status: "pending",
+            retries: retries + 1,
+            startAfter: startAfter.toISOString(),
+            lastError: err.toString(),
+        }, function( err ) {
+            if ( err ) job.emit( "error", err );
+        })
+    } else if ( err ) {
+        update( {
+            id: job.id,
+            status: "error",
+            error: err instanceof Error ? err.toString() : err,
+            end_on: new Date().toISOString()
+        }, function( err ) {
+            if ( err ) job.emit( "error", err );
+        })
+    }
+}
+
 // find and remove jobs that were expired
 function expire( done ) {
     var now = new Date();
-    var expired = [];
+
     new conn.Cursor()
-        .find({ status: "running" })
+        .find( { status: "running" } )
         .once( "error", done )
         .once( "finish", done )
-        .on( "data", function ( job ) {
+        .on( "data", function( job ) {
             if ( job.expires_on && new Date( job.expires_on ) < now ) {
-                job.updated_on = new Date().toISOString();
-                job.status = "error";
-                job.error = "Expired due to inactivity";
-                this.write( job );
-            }
+                var error = new Error( "Expired due to inactivity" );
+                error.retryable = true;
 
-            // if it's running - update it.
-            if ( running[ job.id ] && job.status == "error" ) {
-                running[ job.id ].emit( "error", job.error );
+                handleJobError( job, error, job.options );
             }
         })
-        .once( "end", function () {
+        .once( "end", function() {
             this.end();
         });
 }
@@ -356,8 +359,3 @@ setInterval( expire.bind( null, function ( err ) {
         console.error( "Duty Error: ", err.stack || err );
     }
 } ), 60000 ).unref(); // don't wait for it
-
-
-
-
-
