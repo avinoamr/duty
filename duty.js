@@ -33,21 +33,21 @@ function duty ( name, data, done ) {
     if ( data.id ) {
         var duplicate = false;
         cursor.on( "data", function ( job ) {
-                var err = "Duplicate running job detected in Job #" + job.id;
-                err = extend( new Error( err ), {
-                    code: "duplicate",
-                    dataid: data.id,
-                    jobid: job.id,
-                    status: job.status,
-                    description: "Cancel the running job first, before adding " +
-                    "a new one with the same data.id"
-                })
-
-                this.removeAllListeners()
-                done( err )
+            var err = "Duplicate running job detected in Job #" + job.id;
+            err = extend( new Error( err ), {
+                code: "duplicate",
+                dataid: data.id,
+                jobid: job.id,
+                status: job.status,
+                description: "Cancel the running job first, before adding " +
+                "a new one with the same data.id"
             })
-            .on( "end", push )
-            .find({ status: { $nin: [ "success", "error" ] }, dataid: data.id })
+
+            this.removeAllListeners()
+            done( err )
+        })
+        .on( "end", push )
+        .find({ status: { $nin: [ "success", "error" ] }, dataid: data.id })
     } else {
         push();
     }
@@ -78,6 +78,7 @@ function register ( name, fn, options ) {
         // space out the concurrent runloops to reduce the likelihood of
         // claim conflicts
         setTimeout( function () {
+            console.log( 'Duty starting Run Loop', name );
             runloop( name, fn, options );
         }, 10 * i );
     }
@@ -109,6 +110,7 @@ function runloop ( name, fn, options ) {
         // no job found, try again after `delay` seconds
         if ( !job ) {
             return setTimeout( function () {
+                console.log( 'Duty restarting run loop after delay', name );
                 runloop( name, fn, options )
             }, options.delay );
         }
@@ -250,6 +252,7 @@ function claim( job, options, done ) {
         // this is still not bulletproof. should re-think it, but it passes
         // for the bad-case test of a very slow write, and very fast read
         setTimeout( function () {
+            console.log( 'Duty verifying job was claimed' );
             get( job.id, function ( err, job ) {
                 if ( err ) return done( err );
 
@@ -354,8 +357,12 @@ function expire( done ) {
 }
 
 // clear expired jobs once a minute
-setInterval( expire.bind( null, function ( err ) {
-    if ( err ) {
-        console.error( "Duty Error: ", err.stack || err );
-    }
-} ), 60000 ).unref(); // don't wait for it
+setInterval( function () {
+    console.log( 'Duty expiring zombie jobs...' );
+    expire( function ( err ) {
+        if ( err ) {
+            console.error( "Duty Error: ", err.stack || err );
+        }
+    })
+}, 60000 ).unref();
+
