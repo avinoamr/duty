@@ -324,6 +324,7 @@ function handleJobError( job, err, options ) {
             if ( err ) job.emit( "error", err );
         })
     } else if ( err ) {
+        job.emit( "final-error", err );
         update( {
             id: job.id,
             status: "error",
