@@ -63,6 +63,30 @@ describe( "Duty", function () {
         }
     });
 
+    it( "allows registering for a specific job", function ( done ) {
+        var all = [
+            { hello: "world", job: 0 },
+            { foo: "bar", job: 1 },
+            { alice: "bob", job: 2 }
+        ];
+        var job0 = duty( "test", all[ 0 ] );
+        var job1 = duty( "test", all[ 1 ] );
+        var job2 = duty( "test", all[ 2 ] );
+
+        var foundJob;
+        duty.register( "test", function ( data, cb ) {
+            this.once( "error", done );
+            foundJob = data.job;
+            cb();
+            setTimeout( complete, 20 );
+        }, { id: job1.id } );
+
+        function complete() {
+            assert.equal( foundJob, job1.data.job );
+            done();
+        }
+    });
+
     it( "pushes new jobs to existing listeners", function ( done ) {
         var count = 0, input = [], all = [
             { hello: "world" },
@@ -453,7 +477,7 @@ describe( "Duty", function () {
         var job = duty( "test", {} );
 
         // start two listeners, while the second one will override the first,
-        // both will still have access to the same job because the first 
+        // both will still have access to the same job because the first
         // listener will attempt to read at least one job before it's overridden
         // but will not have enough time to change its status
         var timeout;
