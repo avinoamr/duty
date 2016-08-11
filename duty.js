@@ -2,6 +2,8 @@ var util = require( "util" );
 var events = require( "events" );
 var extend = require( "extend" );
 var conn = require( "dbstream-memory" ).connect();
+var serializeError = require( "serialize-error" );
+var dbOptions = {};
 
 module.exports = duty;
 duty.add = duty;
@@ -176,9 +178,9 @@ function runloop ( name, fn, options ) {
         function done ( err, result ) {
             if ( !running[ job.id ] ) return; // disregard multiple completions
             delete running[ job.id ];
-
-            if ( err == "Canceled" ) {
-                err = new Error( err );
+            var msg = err ? err.message : '';
+            if ( err === 'Error: Canceled' || msg === "Canceled" ) {
+                err = new Error( 'Canceled' );
                 err.retryable = false;
             }
 
@@ -290,18 +292,25 @@ function update( job, done ) {
 }
 
 function cancel( job, done ) {
+    var err = new Error( 'Canceled' );
     update({
         id: job.id || job,
         status: "error",
-        error: "Canceled",
+        error: _dbError( err )
     }, done )
 }
 
-// get or set the dbstream connection
-function db( conn_ ) {
+/**
+ * get or set the dbstream connection and the db options
+ * @param  {Object} conn_   dbstream connection
+ * @param  {Object} options options for db interaction
+ * @param {boolean} options.deepError save the full error object, default: False
+ */
+function db( conn_, options ) {
     if ( typeof conn_ == "undefined" ) {
         return conn;
     }
+    dbOptions = options;
     return conn = conn_;
 }
 
@@ -319,7 +328,7 @@ function handleJobError( job, err, options ) {
             status: "pending",
             retries: retries + 1,
             startAfter: startAfter.toISOString(),
-            lastError: err.toString(),
+            lastError: _dbError( err ),
         }, function( err ) {
             if ( err ) job.emit( "error", err );
         })
@@ -328,7 +337,7 @@ function handleJobError( job, err, options ) {
         update( {
             id: job.id,
             status: "error",
-            error: err instanceof Error ? err.toString() : err,
+            error: _dbError( err ),
             end_on: new Date().toISOString()
         }, function( err ) {
             if ( err ) job.emit( "error", err );
@@ -348,13 +357,24 @@ function expire( done ) {
             if ( job.expires_on && new Date( job.expires_on ) < now ) {
                 var error = new Error( "Expired due to inactivity" );
                 error.retryable = true;
-
                 handleJobError( job, error, job.options );
             }
         })
         .once( "end", function() {
             this.end();
         });
+}
+
+function _dbError( err ) {
+    if ( ! err instanceof Error ) {
+        return err;
+    }
+
+    dbOptions || ( dbOptions = {} );
+
+    // we dont want to save the stack
+    delete err.stack;
+    return dbOptions.deepError ? serializeError( err ) : err.toString();
 }
 
 // clear expired jobs once a minute
@@ -366,4 +386,3 @@ setInterval( function () {
         }
     })
 }, 60000 ).unref();
-
