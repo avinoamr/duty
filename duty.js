@@ -370,11 +370,15 @@ function _dbError( err ) {
         return err;
     }
 
-    dbOptions || ( dbOptions = {} );
+    if ( dbOptions && dbOptions.deepError ) {
+        var serialized = serializeError( err );
 
-    // we dont want to save the stack
-    delete err.stack;
-    return dbOptions.deepError ? serializeError( err ) : err.toString();
+        // we dont want to store the stack
+        delete serialized.stack;
+        return serialized;
+    }
+
+    return err.toString();
 }
 
 // clear expired jobs once a minute

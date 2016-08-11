@@ -176,6 +176,7 @@ describe( "Duty", function () {
                 assert( job.error )
                 assert.equal( job.error.message, "Something went wrong" )
                 assert.equal( job.error.type, "test" );
+                assert( !job.error.stack )
                 done( err )
             })
         }
