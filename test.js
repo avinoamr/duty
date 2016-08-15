@@ -158,6 +158,30 @@ describe( "Duty", function () {
         }
     });
 
+    it( "stores job error as object", function ( done ) {
+        var conn = duty.db();
+        var options = { deepError: true };
+        var error = new Error( "Something went wrong" );
+        error.type = "test"
+        
+        duty.db( conn, options )
+        var job = duty( "test", {} );
+        duty.register( "test", function ( data, cb ) {
+            cb( error, { ok: 1 } );
+            setTimeout( complete, 20 );
+        })
+
+        function complete() {
+            duty.get( job.id, function ( err, job ) {
+                assert( job.error )
+                assert.equal( job.error.message, "Something went wrong" )
+                assert.equal( job.error.type, "test" );
+                assert( !job.error.stack )
+                done( err )
+            })
+        }
+    })
+
     it( "supports job retries", function ( done ) {
         var job = duty( "test", {} );
         var errorNext = true;
@@ -328,7 +352,7 @@ describe( "Duty", function () {
         });
 
         function complete () {
-            assert.equal( err, "Canceled" );
+            assert.equal( err, "Error: Canceled" );
             assert( count >= 1 && count <= 3, "1 <= " + count + " <= 3" );
             done();
         }
@@ -536,6 +560,9 @@ describe( "Duty", function () {
 // duty.db( conn );
 function reset( done ) {
     duty.unregister();
+    var conn = duty.db();
+    // restore to the defautl db options
+    duty.db( conn );
     var jobs = [];
     var Cursor = duty.db().Cursor;
     new Cursor()
