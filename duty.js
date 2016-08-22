@@ -26,8 +26,11 @@ function duty ( name, data, done ) {
 
     var added_on = new Date().toISOString();
     var cursor = new conn.Cursor()
-        .on( "error", done )
-        .on( "finish", function () {
+        .once( "error", function ( err ) {
+            done(err)
+            done = function () {} // run done once
+        })
+        .once( "finish", function () {
             job.added_on = added_on;
             done( null, job )
         });
@@ -333,7 +336,6 @@ function handleJobError( job, err, options ) {
             if ( err ) job.emit( "error", err );
         })
     } else if ( err ) {
-        job.emit( "final-error", err );
         update( {
             id: job.id,
             status: "error",
@@ -342,6 +344,7 @@ function handleJobError( job, err, options ) {
         }, function( err ) {
             if ( err ) job.emit( "error", err );
         })
+        job.emit( "final-error", err );
     }
 }
 
@@ -357,6 +360,13 @@ function expire( done ) {
             if ( job.expires_on && new Date( job.expires_on ) < now ) {
                 var error = new Error( "Expired due to inactivity" );
                 error.retryable = true;
+
+                // handleJobError expects an event-emitter
+                job = extend( new events.EventEmitter(), job )
+                    .on( "error", function ( err ) {
+                        console.error("Error on job expiry", err)
+                    })
+
                 handleJobError( job, error, job.options );
             }
         })
