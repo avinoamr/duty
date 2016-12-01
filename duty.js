@@ -106,7 +106,7 @@ function runloop ( name, fn, options ) {
         ? options.timeout : null;
 
     // run the next job in the queue
-    next( name, options, function ( err, job ) {
+    next( name, options, function ( err, job, singleJob ) {
 
         if ( err ) {
             console.error( new Date().toISOString(), err, err.stack );
@@ -200,7 +200,11 @@ function runloop ( name, fn, options ) {
                 })
             }
 
-            runloop( name, fn, options );
+            // Don't continue to run loop if this is a singlular job
+            // ( a job id was provided to register )
+            if ( !singleJob ) {
+                runloop( name, fn, options );
+            }
         }
     })
 }
@@ -208,8 +212,16 @@ function runloop ( name, fn, options ) {
 // claim and return the next available job in the queue
 function next( name, options, done ) {
     var jobs = [];
+    // If a job id was specified in the options,
+    // only this job will be selected.
+    var singleJob = false;
+    var searchQuery = { name: name, status: "pending" };
+    if ( options.id !== undefined ) {
+        singleJob = true;
+        searchQuery = { id: options.id };
+    }
     return new conn.Cursor()
-        .find({ name: name, status: "pending" })
+        .find( searchQuery )
         .on( "data", function ( data ) { jobs.push( data ) } )
         .once( "error", function ( err ) {
             this.removeAllListeners();
@@ -223,18 +235,25 @@ function next( name, options, done ) {
 
             if ( !job ) return done();
 
-            // claim ownership of this job to prevent concurrently
-            // running the same job by multiple processes
-            claim( job, options, function ( err, job ) {
-                if ( err ) return done( err );
+            // skip claim phase when dealing with a specific job
+            if ( !singleJob ) {
+                // claim ownership of this job to prevent concurrently
+                // running the same job by multiple processes
+                claim( job, options, function ( err, job ) {
+                    if ( err ) return done( err );
 
-                // job is already claimed by concurrent process,
-                // continue to the next job
-                if ( job == null ) return next( name, options, done );
+                    // job is already claimed by concurrent process,
+                    // continue to the next job
+                    if ( job == null ) return next( name, options, done );
 
-                // claimed successfuly, return it
-                done( null, job )
-            })
+                    // claimed successfuly, return it
+                    done( null, job )
+                })
+            } else {
+                // return the specified job and report
+                // that this was a singular job
+                done( null, job, singleJob )
+            }
         })
 }
 
